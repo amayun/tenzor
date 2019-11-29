@@ -54,18 +54,20 @@ function doPrediction(testDataSize = 500) {
     return [testxs, preds, labels];
 }
 
+function printResult ([testxs, preds, labels]) {
+    const predsData = preds.dataSync();
+    const labelsData = labels.dataSync();
+
+    let res = '';
+    for(let i = 0; i < predsData.length; i++) {
+        res += `${predsData[i]} ${labelsData[i]}\n`
+    }
+
+    console.log(res);
+    return res;
+}
+
 console.log('start');
 train()
     .then(() => doPrediction())
-    .then(([testxs, preds, labels]) => {
-        const predsData = preds.dataSync();
-        const labelsData = labels.dataSync();
-
-        let res = '';
-        for(let i = 0; i < predsData.length; i++) {
-               res += `${predsData[i]} ${labelsData[i]}\n`
-        }
-        return res;
-
-    })
-    .then((res) => console.log(res));
+    .then(printResult);
