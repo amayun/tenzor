@@ -43,6 +43,14 @@ export function getModel() {
     return model;
 }
 
+export async function getSavedModel() {
+    try {
+        return await tf.loadLayersModel('file://model/model.json');
+    } catch {
+        return null;
+    }
+}
+
 export async function loadData() {
     const data = new MnistData();
     await data.load();

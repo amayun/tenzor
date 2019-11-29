@@ -1,6 +1,7 @@
 import * as tf from '@tensorflow/tfjs';
 import fetch from 'node-fetch';
 import {PNG} from 'pngjs';
+import {readFileSync, createWriteStream, existsSync, appendFileSync} from 'fs';
 
 const IMAGE_SIZE = 784;
 const NUM_CLASSES = 10;
@@ -13,6 +14,9 @@ const MNIST_IMAGES_SPRITE_PATH =
     'https://storage.googleapis.com/learnjs-data/model-builder/mnist_images.png';
 const MNIST_LABELS_PATH =
     'https://storage.googleapis.com/learnjs-data/model-builder/mnist_labels_uint8';
+
+const IMAGES_LOCAL_PATH = './images.png';
+const LABELS_LOCAL_PATH = './labels.bin';
 
 /**
  * A class that fetches the sprited MNIST dataset and returns shuffled batches.
@@ -28,16 +32,7 @@ export class MnistData {
 
     async load() {
         // Make a request for the MNIST sprited image.
-        const imgRequest = await fetch(MNIST_IMAGES_SPRITE_PATH);
-        const imgData = await imgRequest.arrayBuffer();
-        const img = await new Promise((resolve, reject)=> {
-            new PNG().parse(imgData, (error, data) => {
-                if(error) {
-                    reject(error)
-                }
-                resolve(data);
-            });
-        });
+        const img = await this.loadImages();
 
         const datasetBytesBuffer = new ArrayBuffer(NUM_DATASET_ELEMENTS * IMAGE_SIZE * Float32Array.BYTES_PER_ELEMENT); // 65000 * 784 * 4
         this.datasetImages = new Float32Array(datasetBytesBuffer);
@@ -49,9 +44,9 @@ export class MnistData {
             this.datasetImages[j] = pixels[j * 4] / 255;
         }
 
-        const labels = await fetch(MNIST_LABELS_PATH);
+        const labels = await this.loadLabels();
 
-        this.datasetLabels = new Uint8Array(await labels.arrayBuffer());
+        this.datasetLabels = new Uint8Array(labels);
 
         // Create shuffled indices into the train/test set for when we select a
         // random dataset element for training / validation.
@@ -66,6 +61,40 @@ export class MnistData {
             this.datasetLabels.slice(0, NUM_CLASSES * NUM_TRAIN_ELEMENTS);
         this.testLabels =
             this.datasetLabels.slice(NUM_CLASSES * NUM_TRAIN_ELEMENTS);
+    }
+
+    async loadImages () {
+        if(existsSync(IMAGES_LOCAL_PATH)) {
+            const fileData = readFileSync(IMAGES_LOCAL_PATH);
+            return  PNG.sync.read(fileData);
+        } else {
+            const imgRequest = await fetch(MNIST_IMAGES_SPRITE_PATH);
+            const imgData = await imgRequest.arrayBuffer();
+            const img = await new Promise((resolve, reject) => {
+                new PNG().parse(imgData, (error, data) => {
+                    if (error) {
+                        reject(error)
+                    }
+                    resolve(data);
+                });
+            });
+
+            img.pack().pipe(createWriteStream(IMAGES_LOCAL_PATH));
+
+            return img;
+        }
+    }
+
+    async loadLabels () {
+        if(existsSync(LABELS_LOCAL_PATH)) {
+            return readFileSync(LABELS_LOCAL_PATH);
+        } else {
+            const response = await fetch(MNIST_LABELS_PATH);
+            const labels = await response.arrayBuffer();
+            appendFileSync(LABELS_LOCAL_PATH, new Buffer(labels));
+
+            return labels;
+        }
     }
 
     nextTrainBatch(batchSize) {
@@ -85,7 +114,7 @@ export class MnistData {
         });
     }
 
-    nextBatch(batchSize, data, index) {
+    nextBatch(batchSize, [imagesData, labelsData], index) {
         const batchImagesArray = new Float32Array(batchSize * IMAGE_SIZE);
         const batchLabelsArray = new Uint8Array(batchSize * NUM_CLASSES);
 
@@ -93,15 +122,15 @@ export class MnistData {
             const idx = index();
 
             const image =
-                data[0].slice(idx * IMAGE_SIZE, idx * IMAGE_SIZE + IMAGE_SIZE);
+                imagesData.slice(idx * IMAGE_SIZE, idx * IMAGE_SIZE + IMAGE_SIZE);
             batchImagesArray.set(image, i * IMAGE_SIZE);
 
             const label =
-                data[1].slice(idx * NUM_CLASSES, idx * NUM_CLASSES + NUM_CLASSES);
+                labelsData.slice(idx * NUM_CLASSES, idx * NUM_CLASSES + NUM_CLASSES);
             batchLabelsArray.set(label, i * NUM_CLASSES);
         }
 
-        const xs = tf.tensor2d(batchImagesArray, [batchSize, IMAGE_SIZE]);
+        const xs = tf.tensor2d(batchImagesArray, [batchSize, IMAGE_SIZE]); // images by lines
         const labels = tf.tensor2d(batchLabelsArray, [batchSize, NUM_CLASSES]);
 
         return {xs, labels};
