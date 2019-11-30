@@ -1,6 +1,6 @@
 import * as tf from '@tensorflow/tfjs-node';
 import {getModel, getSavedModel, loadData} from './model';
-import terminalImage from 'terminal-image';
+import {printImage} from "./data";
 
 const fitCallbacks = {
     onEpochEnd: (epoch, log) => {
@@ -64,37 +64,19 @@ async function printResult([testxs, preds, labels]) {
     const predsData = preds.dataSync();
     const labelsData = labels.dataSync();
 
-    let res = '';
+    const err = 0;
     for (let i = 0; i < predsData.length; i++) {
-        res += `${predsData[i]} ${labelsData[i]}\n`
+        if (predsData[i] !== labelsData[i]) {
+            const imageTensor = tf.tidy(() => testxs.slice([i, 0], [1, testxs.shape[1]]).reshape([28, 28, 1]));
+            await printImage(imageTensor, 3, `res/pred-${predsData[i]}-label-${labelsData[i]}.png`);
+
+            imageTensor.dispose();
+        }
     }
-
-    console.log(res);
-
-    return res;
-}
-
-async function printImage() {
-    console.log(await terminalImage.file('./demo.png'));
-}
-
-async function printX() {
-    const testDataSize = 1;
-    data = await loadData();
-
-    const testData = data.nextTestBatch(testDataSize);
-    //const testxs = testData.xs.reshape([testDataSize, 28, 28, 1]);
-    const testxs = testData.xs.reshape([testDataSize, 784, 1]);
-    testxs.print();
-    /*const xSData = testxs.dataSync();
-    console.log('xSData', xSData);*/
 }
 
 console.log('start');
-//printX();
 
 train()
-    .then(() => doPrediction())
+    .then(doPrediction)
     .then(printResult);
-
-//printImage();

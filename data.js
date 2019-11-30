@@ -1,7 +1,8 @@
-import * as tf from '@tensorflow/tfjs';
 import fetch from 'node-fetch';
 import {PNG} from 'pngjs';
-import {readFileSync, createWriteStream, existsSync, appendFileSync} from 'fs';
+import fs from 'fs';
+import terminalImage from 'terminal-image';
+import * as tf from "@tensorflow/tfjs-node";
 
 const IMAGE_SIZE = 784;
 const NUM_CLASSES = 10;
@@ -63,35 +64,28 @@ export class MnistData {
             this.datasetLabels.slice(NUM_CLASSES * NUM_TRAIN_ELEMENTS);
     }
 
-    async loadImages () {
-        if(existsSync(IMAGES_LOCAL_PATH)) {
-            const fileData = readFileSync(IMAGES_LOCAL_PATH);
-            return  PNG.sync.read(fileData);
+    async loadImages() {
+        if (fs.existsSync(IMAGES_LOCAL_PATH)) {
+            const fileData = fs.readFileSync(IMAGES_LOCAL_PATH);
+            return PNG.sync.read(fileData);
         } else {
             const imgRequest = await fetch(MNIST_IMAGES_SPRITE_PATH);
             const imgData = await imgRequest.arrayBuffer();
-            const img = await new Promise((resolve, reject) => {
-                new PNG().parse(imgData, (error, data) => {
-                    if (error) {
-                        reject(error)
-                    }
-                    resolve(data);
-                });
+            fs.createWriteStream(IMAGES_LOCAL_PATH).write(Buffer.from(imgData));
+
+            return await new Promise((resolve, reject) => {
+                new PNG().parse(imgData, (error, data) => error ? reject(error) : resolve(data))
             });
-
-            img.pack().pipe(createWriteStream(IMAGES_LOCAL_PATH));
-
-            return img;
         }
     }
 
-    async loadLabels () {
-        if(existsSync(LABELS_LOCAL_PATH)) {
-            return readFileSync(LABELS_LOCAL_PATH);
+    async loadLabels() {
+        if (fs.existsSync(LABELS_LOCAL_PATH)) {
+            return fs.readFileSync(LABELS_LOCAL_PATH);
         } else {
             const response = await fetch(MNIST_LABELS_PATH);
             const labels = await response.arrayBuffer();
-            appendFileSync(LABELS_LOCAL_PATH, new Buffer(labels));
+            fs.createWriteStream(LABELS_LOCAL_PATH).write(Buffer.from(labels));
 
             return labels;
         }
@@ -134,5 +128,29 @@ export class MnistData {
         const labels = tf.tensor2d(batchLabelsArray, [batchSize, NUM_CLASSES]);
 
         return {xs, labels};
+    }
+}
+
+export async function printImage(imageTensor, writeFlags = 0, fsName = 'out.png') {
+    const [writeToDisk, printToConsole] = writeFlags.toString(2).padStart(2, 0).split('');
+// 1 0,1   2 1,0    3 1,1
+
+    const bytes = await tf.browser.toPixels(imageTensor);
+    const png = new PNG({width: 28, height: 28});
+    png.data = bytes;
+
+    const data = await new Promise((resolve) => {
+        const bufs = [];
+        png.on('data', (part) => bufs.push(part));
+        png.on('end', () => resolve(Buffer.concat(bufs)));
+        png.pack();
+    });
+
+    if (writeToDisk) {
+        fs.createWriteStream(fsName).write(data);
+    }
+
+    if (printToConsole) {
+        console.log(await terminalImage.buffer(data));
     }
 }
