@@ -41,14 +41,17 @@ async function train() {
         ]
     });
 
-    model.fit(trainXs, trainYs, {
+    const history = await model.fit(trainXs, trainYs, {
         batchSize: BATCH_SIZE,
         validationData: [testXs, testYs],
         epochs: 10,
         shuffle: true,
         callbacks: fitCallbacks
     });
-    model.save('file://model');
+
+    await model.save('file://model');
+
+    return history;
 }
 
 function doPrediction(testDataSize = 500) {
@@ -64,19 +67,21 @@ async function printResult([testxs, preds, labels]) {
     const predsData = preds.dataSync();
     const labelsData = labels.dataSync();
 
-    const err = 0;
+    let err = 0;
     for (let i = 0; i < predsData.length; i++) {
         if (predsData[i] !== labelsData[i]) {
+            err++;
             const imageTensor = tf.tidy(() => testxs.slice([i, 0], [1, testxs.shape[1]]).reshape([28, 28, 1]));
-            await printImage(imageTensor, 3, `res/pred-${predsData[i]}-label-${labelsData[i]}.png`);
+            await printImage(imageTensor, 0, `res/pred-${predsData[i]}-label-${labelsData[i]}.png`);
 
             imageTensor.dispose();
         }
     }
+    console.log(`total preds ${predsData.length}, total errors ${err}`)
 }
 
 console.log('start');
 
 train()
-    .then(doPrediction)
-    .then(printResult);
+    .then(() => doPrediction())
+    .then((res) => printResult(res));
