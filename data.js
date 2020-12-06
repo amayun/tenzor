@@ -2,12 +2,11 @@ import fetch from 'node-fetch';
 import {PNG} from 'pngjs';
 import fs from 'fs';
 import terminalImage from 'terminal-image';
-import * as tf from "@tensorflow/tfjs-node";
+import * as tf from "@tensorflow/tfjs";
 
-const IMAGE_SIZE = 784;
-const NUM_CLASSES = 10;
+const IMAGE_SIZE = 784; // 28px*28px
+const NUM_CLASSES = 10; // 0-9
 const NUM_DATASET_ELEMENTS = 65000;
-
 const NUM_TRAIN_ELEMENTS = 55000;
 const NUM_TEST_ELEMENTS = NUM_DATASET_ELEMENTS - NUM_TRAIN_ELEMENTS;
 
@@ -36,12 +35,11 @@ export class MnistData {
         const img = await this.loadImages();
 
         const datasetBytesBuffer = new ArrayBuffer(NUM_DATASET_ELEMENTS * IMAGE_SIZE * Float32Array.BYTES_PER_ELEMENT); // 65000 * 784 * 4
-        this.datasetImages = new Float32Array(datasetBytesBuffer);
-        const pixels = new Uint8ClampedArray(img.data);
+        this.datasetImages = new Float32Array(datasetBytesBuffer); // 0 - 1 (float32) for each pixel of each image
+        const pixels = new Uint8ClampedArray(img.data); // 0-255 * rgba (8uint) for each pixel of each image
 
         for (let j = 0; j < pixels.length / 4; j++) {
-            // All channels hold an equal value since the image is grayscale, so
-            // just read the red channel.
+            // All channels hold an equal value since the image is grayscale, so just read the red channel.
             this.datasetImages[j] = pixels[j * 4] / 255;
         }
 
@@ -55,13 +53,11 @@ export class MnistData {
         this.testIndices = tf.util.createShuffledIndices(NUM_TEST_ELEMENTS);
 
         // Slice the the images and labels into train and test sets.
-        this.trainImages =
-            this.datasetImages.slice(0, IMAGE_SIZE * NUM_TRAIN_ELEMENTS);
+        this.trainImages = this.datasetImages.slice(0, IMAGE_SIZE * NUM_TRAIN_ELEMENTS);
         this.testImages = this.datasetImages.slice(IMAGE_SIZE * NUM_TRAIN_ELEMENTS);
-        this.trainLabels =
-            this.datasetLabels.slice(0, NUM_CLASSES * NUM_TRAIN_ELEMENTS);
-        this.testLabels =
-            this.datasetLabels.slice(NUM_CLASSES * NUM_TRAIN_ELEMENTS);
+
+        this.trainLabels = this.datasetLabels.slice(0, NUM_CLASSES * NUM_TRAIN_ELEMENTS);
+        this.testLabels = this.datasetLabels.slice(NUM_CLASSES * NUM_TRAIN_ELEMENTS);
     }
 
     async loadImages() {
@@ -94,33 +90,29 @@ export class MnistData {
     nextTrainBatch(batchSize) {
         return this.nextBatch(
             batchSize, [this.trainImages, this.trainLabels], () => {
-                this.shuffledTrainIndex =
-                    (this.shuffledTrainIndex + 1) % this.trainIndices.length;
+                this.shuffledTrainIndex = (this.shuffledTrainIndex + 1) % this.trainIndices.length;
                 return this.trainIndices[this.shuffledTrainIndex];
             });
     }
 
     nextTestBatch(batchSize) {
         return this.nextBatch(batchSize, [this.testImages, this.testLabels], () => {
-            this.shuffledTestIndex =
-                (this.shuffledTestIndex + 1) % this.testIndices.length;
+            this.shuffledTestIndex = (this.shuffledTestIndex + 1) % this.testIndices.length;
             return this.testIndices[this.shuffledTestIndex];
         });
     }
 
-    nextBatch(batchSize, [imagesData, labelsData], index) {
+    nextBatch(batchSize, [imagesData, labelsData], getIndex) {
         const batchImagesArray = new Float32Array(batchSize * IMAGE_SIZE);
         const batchLabelsArray = new Uint8Array(batchSize * NUM_CLASSES);
 
         for (let i = 0; i < batchSize; i++) {
-            const idx = index();
+            const idx = getIndex();
 
-            const image =
-                imagesData.slice(idx * IMAGE_SIZE, idx * IMAGE_SIZE + IMAGE_SIZE);
+            const image = imagesData.slice(idx * IMAGE_SIZE, idx * IMAGE_SIZE + IMAGE_SIZE);
             batchImagesArray.set(image, i * IMAGE_SIZE);
 
-            const label =
-                labelsData.slice(idx * NUM_CLASSES, idx * NUM_CLASSES + NUM_CLASSES);
+            const label = labelsData.slice(idx * NUM_CLASSES, idx * NUM_CLASSES + NUM_CLASSES);
             batchLabelsArray.set(label, i * NUM_CLASSES);
         }
 
@@ -129,28 +121,39 @@ export class MnistData {
 
         return {xs, labels};
     }
-}
 
-export async function printImage(imageTensor, writeFlags = 0, fsName = 'out.png') {
-    const [writeToDisk, printToConsole] = writeFlags.toString(2).padStart(2, 0).split('');
-// 1 0,1   2 1,0    3 1,1
-
-    const bytes = await tf.browser.toPixels(imageTensor);
-    const png = new PNG({width: 28, height: 28});
-    png.data = bytes;
-
-    const data = await new Promise((resolve) => {
-        const bufs = [];
-        png.on('data', (part) => bufs.push(part));
-        png.on('end', () => resolve(Buffer.concat(bufs)));
-        png.pack();
-    });
-
-    if (writeToDisk) {
-        fs.createWriteStream(fsName).write(data);
+    async printImageTensor(imageTensor, {writeToDisk, printToConsole} = {}, fsName) {
+        const bytes = await tf.browser.toPixels(imageTensor);
+        await this.printImage(bytes, {writeToDisk, printToConsole}, fsName);
     }
 
-    if (printToConsole) {
-        console.log(await terminalImage.buffer(data));
+    async printNormalizedImage(singleChangeBytes, {writeToDisk, printToConsole} = {}, fsName) {
+        const bytes = singleChangeBytes.reduce((acc, normalizedByte) => {
+            const byte = normalizedByte * 255;
+            acc.push(byte, byte, byte, 255);
+            return acc;
+        }, []);
+
+        await this.printImage(new Uint8ClampedArray(bytes), {writeToDisk, printToConsole}, fsName);
+    }
+
+    async printImage(bytes, {writeToDisk = true, printToConsole = false} = {}, fsName = 'out.png') {
+        const png = new PNG({width: 28, height: 28});
+        png.data = bytes;
+
+        const data = await new Promise((resolve) => {
+            const bufs = [];
+            png.on('data', (part) => bufs.push(part));
+            png.on('end', () => resolve(Buffer.concat(bufs)));
+            png.pack();
+        });
+
+        if (writeToDisk) {
+            fs.createWriteStream(fsName).write(data);
+        }
+
+        if (printToConsole) {
+            console.log(await terminalImage.buffer(data));
+        }
     }
 }

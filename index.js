@@ -1,18 +1,9 @@
-require("@babel/register")({
-    "presets": [
-        [
-            "@babel/preset-env",
-            {
-                "useBuiltIns": "entry"
-            }
-        ]
-    ]
-});
-require("babel-polyfill");
-require('./train.js');
+import {start} from './train.js';
+
+await start();
+//https://github.com/tensorflow/tfjs/issues/4116
 
 /*
-const tf = require('@tensorflow/tfjs-node');
 
 // Define a model for linear regression.
 const model = tf.sequential();

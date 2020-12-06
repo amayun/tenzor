@@ -1,5 +1,5 @@
 import * as tf from '@tensorflow/tfjs';
-import {MnistData} from './data';
+import {MnistData} from './data.js';
 
 export function getModel() {
     const model = tf.sequential();
@@ -49,11 +49,4 @@ export async function getSavedModel() {
     } catch {
         return null;
     }
-}
-
-export async function loadData() {
-    const data = new MnistData();
-    await data.load();
-
-    return data;
 }
