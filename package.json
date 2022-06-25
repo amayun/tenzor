@@ -12,7 +12,7 @@
   "dependencies": {
     "@tensorflow/tfjs-node": "^2.7.0",
     "@types/pngjs": "^3.4.2",
-    "node-fetch": "^2.6.0",
+    "node-fetch": "^2.6.7",
     "pngjs": "^6.0.0",
     "terminal-image": "^1.2.1"
   }
